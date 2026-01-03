@@ -5,10 +5,10 @@ import time
 from datetime import datetime
 from typing import Callable, Optional
 
+from .base_client import MusicServiceClient
 from .config import ScrapingSettings
 from .models import ScrapeContext, Track
 from .rules import ScrapeRulesEngine
-from .spotify_client import SpotifyClient
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +16,14 @@ logger = logging.getLogger(__name__)
 class LikedSongsWatcher:
     """Watches for newly liked songs and triggers scraping when appropriate.
 
-    Since Spotify doesn't provide webhooks for library changes, this uses
+    Works with any MusicServiceClient implementation (Spotify, Tidal, etc.).
+    Since most services don't provide webhooks for library changes, this uses
     polling to detect new liked songs.
     """
 
     def __init__(
         self,
-        spotify_client: SpotifyClient,
+        music_client: MusicServiceClient,
         rules_engine: ScrapeRulesEngine,
         settings: ScrapingSettings,
         on_scrape_triggered: Optional[Callable[[Track, list[Track]], None]] = None,
@@ -30,12 +31,12 @@ class LikedSongsWatcher:
         """Initialize the watcher.
 
         Args:
-            spotify_client: Spotify API client.
+            music_client: Music service API client.
             rules_engine: Rules engine for determining when to scrape.
             settings: Scraping configuration.
             on_scrape_triggered: Optional callback when scraping occurs.
         """
-        self.spotify = spotify_client
+        self.client = music_client
         self.rules_engine = rules_engine
         self.settings = settings
         self.on_scrape_triggered = on_scrape_triggered
@@ -44,6 +45,12 @@ class LikedSongsWatcher:
         self._seen_track_ids: set[str] = set()
         self._running = False
         self._last_poll_time: Optional[datetime] = None
+
+    # Keep backward compatibility
+    @property
+    def spotify(self) -> MusicServiceClient:
+        """Backward compatible alias for music client."""
+        return self.client
 
     def build_known_artists_index(self) -> set[str]:
         """Build an index of known artist IDs from user's liked songs.
@@ -56,7 +63,7 @@ class LikedSongsWatcher:
             f"{self.settings.known_artists_scan_limit} liked songs..."
         )
 
-        liked_songs = self.spotify.get_all_liked_songs(
+        liked_songs = self.client.get_all_liked_songs(
             max_tracks=self.settings.known_artists_scan_limit
         )
 
@@ -80,11 +87,18 @@ class LikedSongsWatcher:
         Returns:
             List of new tracks (not seen before).
         """
-        recent_tracks = self.spotify.get_recently_liked_songs(count=20)
+        logger.debug("Fetching recent liked songs...")
+        recent_tracks = self.client.get_recently_liked_songs(count=20)
+        logger.debug(f"Got {len(recent_tracks)} recent tracks from API")
+        
         new_tracks = [t for t in recent_tracks if t.id not in self._seen_track_ids]
 
         if new_tracks:
-            logger.info(f"Found {len(new_tracks)} new liked song(s)")
+            logger.info(f"🆕 Found {len(new_tracks)} new liked song(s):")
+            for t in new_tracks:
+                logger.info(f"   • {t.name} by {', '.join(t.artist_names)}")
+        else:
+            logger.debug(f"No new tracks (all {len(recent_tracks)} already seen)")
 
         return new_tracks
 
@@ -103,7 +117,7 @@ class LikedSongsWatcher:
         context = ScrapeContext(
             track=track,
             known_artist_ids=self._known_artist_ids,
-            user_id=self.spotify.user_id,
+            user_id=self.client.user_id,
         )
 
         # Evaluate rules
@@ -124,7 +138,7 @@ class LikedSongsWatcher:
         queued_tracks: list[Track] = []
         for artist in result.artists_to_scrape:
             logger.info(f"    Fetching top tracks for: {artist.name}")
-            top_tracks = self.spotify.get_artist_top_tracks(
+            top_tracks = self.client.get_artist_top_tracks(
                 artist.id, limit=self.settings.top_tracks_limit
             )
 
@@ -139,7 +153,7 @@ class LikedSongsWatcher:
                     continue
 
                 # Add to queue
-                if self.spotify.add_to_queue(top_track.uri):
+                if self.client.add_to_queue(top_track.uri):
                     logger.info(f"    ✓ Queued: {top_track.name}")
                     queued_tracks.append(top_track)
                 else:
@@ -164,9 +178,14 @@ class LikedSongsWatcher:
         self._last_poll_time = datetime.now()
         all_queued: list[Track] = []
 
+        logger.debug(f"─── Poll at {self._last_poll_time.strftime('%H:%M:%S')} ───")
+
         try:
             new_tracks = self.check_for_new_likes()
 
+            if not new_tracks:
+                logger.debug("Nothing to process")
+            
             for track in new_tracks:
                 queued = self.process_new_track(track)
                 all_queued.extend(queued)
@@ -186,11 +205,21 @@ class LikedSongsWatcher:
         self.build_known_artists_index()
 
         self._running = True
-        logger.info("Watcher started. Listening for new liked songs...")
+        logger.info("")
+        logger.info("="*50)
+        logger.info("🎧 Watcher started! Listening for new liked songs...")
+        logger.info(f"   Tracking {len(self._seen_track_ids)} songs, {len(self._known_artist_ids)} artists")
+        logger.info(f"   Polling every {self.settings.poll_interval_seconds}s (use --debug for verbose)")
+        logger.info("="*50)
+        logger.info("")
 
+        poll_count = 0
         while self._running:
             try:
+                poll_count += 1
+                logger.debug(f"Poll #{poll_count}")
                 self.run_once()
+                logger.debug(f"Sleeping {self.settings.poll_interval_seconds}s...")
                 time.sleep(self.settings.poll_interval_seconds)
 
             except KeyboardInterrupt:
@@ -215,19 +244,19 @@ class EventDrivenWatcher:
 
     def __init__(
         self,
-        spotify_client: SpotifyClient,
+        music_client: MusicServiceClient,
         rules_engine: ScrapeRulesEngine,
         settings: ScrapingSettings,
     ):
         """Initialize the event-driven watcher.
 
         Args:
-            spotify_client: Spotify API client.
+            music_client: Music service API client.
             rules_engine: Rules engine for scraping decisions.
             settings: Scraping configuration.
         """
         self._watcher = LikedSongsWatcher(
-            spotify_client=spotify_client,
+            music_client=music_client,
             rules_engine=rules_engine,
             settings=settings,
         )

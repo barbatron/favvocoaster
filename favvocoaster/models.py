@@ -7,7 +7,7 @@ from typing import Optional
 
 @dataclass
 class Artist:
-    """Represents a Spotify artist."""
+    """Represents an artist from a music service."""
 
     id: str
     name: str
@@ -16,7 +16,7 @@ class Artist:
 
 @dataclass
 class Track:
-    """Represents a Spotify track."""
+    """Represents a track from a music service."""
 
     id: str
     name: str

@@ -1,18 +1,20 @@
 [project]
 name = "favvocoaster"
 version = "0.1.0"
-description = "Spotify integration that auto-queues top tracks from artists of newly liked songs"
+description = "Music streaming integration that auto-queues top tracks from artists of newly liked songs"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "spotipy>=2.23.0",
     "python-dotenv>=1.0.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
 ]
 
 [project.optional-dependencies]
+spotify = ["spotipy>=2.23.0"]
+tidal = ["tidalapi>=0.7.0"]
 lambda = ["boto3>=1.34.0"]
+all = ["spotipy>=2.23.0", "tidalapi>=0.7.0"]
 
 [project.scripts]
 favvocoaster = "favvocoaster.main:main"

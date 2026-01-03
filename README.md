@@ -1,10 +1,11 @@
 # 🎢 FavvoCoaster
 
-Auto-queue top tracks from artists when you like collaboration songs on Spotify.
+Auto-queue top tracks from artists when you like collaboration songs on Spotify
+or Tidal.
 
 ## What it does
 
-When you like a song on Spotify:
+When you like a song on Spotify or Tidal:
 
 1. FavvoCoaster checks if the song is a **collaboration** (multiple artists)
 2. If none of the artists are already in your library (they're "new" to you)
@@ -18,6 +19,7 @@ collaborations!
 
 - 🎵 **Smart scraping rules** - Only triggers on multi-artist tracks with new
   artists
+- 🎧 **Multi-service support** - Works with Spotify and Tidal
 - ⚙️ **Configurable** - Adjust minimum artists, tracks per artist, polling
   interval
 - 🔌 **Extensible rules engine** - Easy to add custom rules
@@ -31,44 +33,103 @@ collaborations!
 git clone https://github.com/yourusername/favvocoaster.git
 cd favvocoaster
 
-# Install with pip
-pip install -e .
+# Install with Spotify support
+pip install -e ".[spotify]"
+
+# Install with Tidal support
+pip install -e ".[tidal]"
+
+# Install with both
+pip install -e ".[all]"
 
 # Or with uv
-uv pip install -e .
+uv pip install -e ".[all]"
 ```
 
 ## Setup
 
-### 1. Create a Spotify App
+### Option A: Spotify
+
+#### 1. Create a Spotify App
 
 1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
 2. Create a new app
 3. Set the redirect URI to `http://localhost:8888/callback`
 4. Note your Client ID and Client Secret
 
-### 2. Configure Environment
+#### 2. Configure Environment
 
 ```bash
-# Copy the example config
 cp .env.example .env
-
-# Edit .env with your credentials
 nano .env
 ```
 
 Set your Spotify credentials:
 
 ```
+SERVICE=spotify
 SPOTIFY_CLIENT_ID=your_client_id_here
 SPOTIFY_CLIENT_SECRET=your_client_secret_here
 ```
+
+#### 3. Run
+
+```bash
+favvocoaster
+```
+
+On first run, a browser window will open for Spotify authentication.
+
+---
+
+### Option B: Tidal
+
+Tidal uses device code authentication (like TV apps) - no API credentials
+needed!
+
+#### 1. Configure Environment
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Set the service:
+
+```
+SERVICE=tidal
+```
+
+#### 2. Run and Authenticate
+
+```bash
+favvocoaster --service tidal
+```
+
+On first run, you'll see:
+
+```
+🎵 Tidal Authentication Required
+========================================
+1. Go to: https://link.tidal.com/XXXXX
+2. Or visit https://link.tidal.com and enter code: XXXXX
+
+Waiting for authentication...
+```
+
+Visit the URL, log in with your Tidal account, and the app will continue
+automatically. Your session is saved to `.tidal_session.json` for future runs.
+
+---
 
 ### 3. Run FavvoCoaster
 
 ```bash
 # Start the watcher (continuous mode)
 favvocoaster
+
+# Use Tidal instead of Spotify
+favvocoaster --service tidal
 
 # Or run once
 favvocoaster --once
@@ -80,7 +141,7 @@ favvocoaster --dry-run
 favvocoaster --status
 ```
 
-On first run, a browser window will open for Spotify authentication.
+On first run, you'll be prompted to authenticate with your chosen service.
 
 ## Configuration
 
@@ -88,9 +149,11 @@ All settings can be configured via environment variables or `.env` file:
 
 | Variable                          | Default                          | Description                           |
 | --------------------------------- | -------------------------------- | ------------------------------------- |
-| `SPOTIFY_CLIENT_ID`               | (required)                       | Your Spotify app client ID            |
-| `SPOTIFY_CLIENT_SECRET`           | (required)                       | Your Spotify app client secret        |
+| `SERVICE`                         | `spotify`                        | Music service: `spotify` or `tidal`   |
+| `SPOTIFY_CLIENT_ID`               | -                                | Your Spotify app client ID            |
+| `SPOTIFY_CLIENT_SECRET`           | -                                | Your Spotify app client secret        |
 | `SPOTIFY_REDIRECT_URI`            | `http://localhost:8888/callback` | OAuth redirect URI                    |
+| `TIDAL_SESSION_FILE`              | `.tidal_session.json`            | Path to store Tidal session           |
 | `SCRAPE_MIN_ARTISTS`              | `2`                              | Minimum artists to trigger scraping   |
 | `SCRAPE_TOP_TRACKS_LIMIT`         | `1`                              | Top tracks to queue per artist        |
 | `SCRAPE_SKIP_KNOWN_ARTISTS`       | `true`                           | Skip if any artist is known           |
@@ -175,8 +238,24 @@ favvocoaster --dry-run
 ## Requirements
 
 - Python 3.12+
-- Active Spotify Premium subscription (required for queue control)
-- Spotify must be playing on a device for queue additions to work
+- **Spotify**: Active Spotify Premium subscription (required for queue control)
+- **Tidal**: Active Tidal subscription (HiFi or HiFi Plus)
+- Music must be playing on a device for queue additions to work
+
+## Service-Specific Notes
+
+### Spotify
+
+- Requires creating a developer app at
+  [developer.spotify.com](https://developer.spotify.com/dashboard)
+- Uses OAuth with browser redirect
+- Premium subscription required for playback control
+
+### Tidal
+
+- No developer credentials needed - uses device code flow
+- Session persists in `.tidal_session.json`
+- Queue management requires Tidal Connect (playback on supported devices)
 
 ## License
 

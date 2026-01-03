@@ -1,20 +1,16 @@
 # FavvoCoaster Lambda Deployment
 
-# 
+Quick deployment for personal use. Not production-grade.
 
-# Quick deployment for personal use. Not production-grade.
+**Note:** Lambda deployment currently only supports Spotify. Tidal uses device
+code auth flow which doesn't work well in a serverless context.
 
-# 
+## Prerequisites
 
-# Prerequisites:
-
-# - AWS CLI configured (aws configure)
-
-# - Terraform >= 1.0
-
-# - Python 3.12
-
-# - Spotify app created at https://developer.spotify.com/dashboard
+- AWS CLI configured (aws configure)
+- Terraform >= 1.0
+- Python 3.12
+- Spotify app created at https://developer.spotify.com/dashboard
 
 ## First-time setup
 
@@ -49,7 +45,7 @@ aws lambda invoke --function-name favvocoaster /dev/stdout
 1. **EventBridge** triggers Lambda every minute (configurable)
 2. **Lambda** polls Spotify for new liked songs
 3. OAuth tokens are stored in **SSM Parameter Store** (auto-refreshed)
-4. If you're playing music, matching tracks get queued
+4. If you're playing music on Spotify, matching tracks get queued
 
 ## Updating code
 
@@ -100,8 +96,8 @@ terraform destroy -var="spotify_client_id=x" -var="spotify_client_secret=x"
 
 ## Troubleshooting
 
-**"No active playback"** - Lambda can only queue if Spotify is actively playing
-on a device
+**"No active playback"** - Lambda can only queue tracks if Spotify is actively
+playing on a device
 
 **Token errors** - Re-run bootstrap: `python -m favvocoaster.bootstrap_token`
 

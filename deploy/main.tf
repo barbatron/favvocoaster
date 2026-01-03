@@ -3,6 +3,9 @@
 # Quick & dirty Terraform for deploying to AWS Lambda.
 # Presumes you have AWS creds configured and Terraform installed.
 #
+# Note: Lambda deployment currently only supports Spotify.
+# Tidal uses device code auth which doesn't work in serverless.
+#
 # Usage:
 #   cd deploy/
 #   terraform init
@@ -50,7 +53,7 @@ variable "ssm_token_param" {
 }
 
 # -----------------------------------------------------------------------------
-# SSM Parameter for Spotify token (created empty, bootstrap script fills it)
+# SSM Parameter for OAuth token (created empty, bootstrap script fills it)
 # -----------------------------------------------------------------------------
 
 resource "aws_ssm_parameter" "spotify_token" {

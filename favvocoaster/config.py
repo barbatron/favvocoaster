@@ -1,7 +1,17 @@
 """Configuration management for FavvoCoaster."""
 
+from enum import Enum
+from typing import Optional
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class MusicService(str, Enum):
+    """Supported music streaming services."""
+
+    SPOTIFY = "spotify"
+    TIDAL = "tidal"
 
 
 class SpotifySettings(BaseSettings):
@@ -9,11 +19,28 @@ class SpotifySettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SPOTIFY_")
 
-    client_id: str = Field(description="Spotify App Client ID")
-    client_secret: str = Field(description="Spotify App Client Secret")
+    client_id: str = Field(default="", description="Spotify App Client ID")
+    client_secret: str = Field(default="", description="Spotify App Client Secret")
     redirect_uri: str = Field(
         default="http://localhost:8888/callback",
         description="OAuth redirect URI",
+    )
+
+
+class TidalSettings(BaseSettings):
+    """Tidal API configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="TIDAL_")
+
+    # Tidal uses device code flow, so no client credentials needed for basic auth
+    # But we might need these for future OAuth app registration
+    client_id: Optional[str] = Field(default=None, description="Tidal App Client ID")
+    client_secret: Optional[str] = Field(default=None, description="Tidal App Client Secret")
+
+    # Session file for persisting auth
+    session_file: str = Field(
+        default=".tidal_session.json",
+        description="Path to store Tidal session data",
     )
 
 
@@ -62,7 +89,14 @@ class AppSettings(BaseSettings):
         extra="ignore",
     )
 
+    # Which music service to use
+    service: MusicService = Field(
+        default=MusicService.SPOTIFY,
+        description="Music service to use (spotify or tidal)",
+    )
+
     spotify: SpotifySettings = Field(default_factory=SpotifySettings)
+    tidal: TidalSettings = Field(default_factory=TidalSettings)
     scraping: ScrapingSettings = Field(default_factory=ScrapingSettings)
 
     # Debug mode

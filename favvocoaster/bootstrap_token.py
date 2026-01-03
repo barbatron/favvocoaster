@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Helper script to bootstrap Spotify OAuth token for Lambda.
+"""Helper script to bootstrap Spotify OAuth token for Lambda deployment.
 
 Run this locally ONCE to authenticate and upload the initial token to SSM.
 After that, the Lambda will refresh tokens automatically.
+
+Note: This script is for Spotify only. Lambda deployment currently only
+supports Spotify due to the OAuth flow requirements.
 
 Usage:
     python -m favvocoaster.bootstrap_token

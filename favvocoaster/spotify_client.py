@@ -8,6 +8,7 @@ from typing import Optional
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
+from .base_client import MusicServiceClient
 from .config import SpotifySettings
 from .models import Artist, Track
 
@@ -22,8 +23,12 @@ REQUIRED_SCOPES = [
 ]
 
 
-class SpotifyClient:
+class SpotifyClient(MusicServiceClient):
     """Wrapper around spotipy for FavvoCoaster operations."""
+
+    @property
+    def service_name(self) -> str:
+        return "Spotify"
 
     def __init__(self, settings: SpotifySettings, cache_path: Optional[Path] = None):
         """Initialize the Spotify client.

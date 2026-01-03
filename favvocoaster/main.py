@@ -4,9 +4,10 @@ import argparse
 import logging
 import sys
 
-from .config import load_settings
+from .base_client import MusicServiceClient
+from .client_factory import create_music_client
+from .config import MusicService, load_settings
 from .rules import ScrapeRulesEngine
-from .spotify_client import SpotifyClient
 from .watcher import LikedSongsWatcher
 
 
@@ -27,9 +28,10 @@ def setup_logging(debug: bool = False) -> None:
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-    # Reduce noise from spotipy
+    # Reduce noise from libraries
     logging.getLogger("spotipy").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("tidalapi").setLevel(logging.WARNING)
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,19 +45,36 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  favvocoaster                    # Start with default settings
+  favvocoaster                    # Start with default settings (Spotify)
+  favvocoaster --service tidal    # Use Tidal instead of Spotify
   favvocoaster --debug            # Enable debug logging
   favvocoaster --once             # Run once and exit (don't loop)
   favvocoaster --dry-run          # Show what would be queued without doing it
 
 Environment Variables:
-  SPOTIFY_CLIENT_ID       Spotify App Client ID (required)
-  SPOTIFY_CLIENT_SECRET   Spotify App Client Secret (required)
+  SERVICE                 Music service to use: spotify (default) or tidal
+
+  # Spotify
+  SPOTIFY_CLIENT_ID       Spotify App Client ID
+  SPOTIFY_CLIENT_SECRET   Spotify App Client Secret
   SPOTIFY_REDIRECT_URI    OAuth redirect URI (default: http://localhost:8888/callback)
+
+  # Tidal
+  TIDAL_SESSION_FILE      Path to store Tidal session (default: .tidal_session.json)
+
+  # Scraping
   SCRAPE_MIN_ARTISTS      Min artists to trigger scraping (default: 2)
   SCRAPE_TOP_TRACKS_LIMIT Top tracks per artist (default: 1)
   SCRAPE_POLL_INTERVAL_SECONDS  Polling interval (default: 30)
         """,
+    )
+
+    parser.add_argument(
+        "--service",
+        "-S",
+        type=str,
+        choices=["spotify", "tidal"],
+        help="Music service to use (overrides SERVICE env var)",
     )
 
     parser.add_argument(
@@ -86,30 +105,32 @@ Environment Variables:
     return parser.parse_args()
 
 
-def show_status(spotify: SpotifyClient, settings) -> None:
+def show_status(client: MusicServiceClient, settings) -> None:
     """Display current status and configuration.
 
     Args:
-        spotify: Spotify client.
+        client: Music service client.
         settings: Application settings.
     """
     print("\n🎢 FavvoCoaster Status")
     print("=" * 50)
 
+    print(f"\n🎵 Service: {client.service_name}")
+
     # User info
     try:
-        user_id = spotify.user_id
-        print(f"\n👤 Logged in as: {user_id}")
+        user_id = client.user_id
+        print(f"👤 Logged in as: {user_id}")
     except Exception as e:
-        print(f"\n❌ Not authenticated: {e}")
+        print(f"❌ Not authenticated: {e}")
         return
 
     # Playback status
-    if spotify.is_playing():
-        playback = spotify.get_current_playback()
+    if client.is_playing():
+        playback = client.get_current_playback()
         if playback and playback.get("item"):
             track = playback["item"]
-            print(f"🎵 Currently playing: {track['name']}")
+            print(f"▶️  Currently playing: {track['name']}")
     else:
         print("⏸️  No active playback")
 
@@ -136,53 +157,61 @@ def main() -> int:
         settings = load_settings()
     except Exception as e:
         print(f"❌ Configuration error: {e}")
-        print(
-            "\nMake sure you have set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET "
-            "environment variables or created a .env file."
-        )
+        print("\nMake sure you have configured the required environment variables.")
         return 1
+
+    # Override service from CLI if provided
+    if args.service:
+        settings.service = MusicService(args.service)
 
     # Setup logging
     setup_logging(debug=args.debug or settings.debug)
     logger = logging.getLogger(__name__)
 
     logger.info("🎢 FavvoCoaster starting up...")
+    logger.info(f"Using service: {settings.service.value}")
 
-    # Initialize Spotify client
+    # Initialize music client
     try:
-        spotify = SpotifyClient(settings.spotify)
-        logger.info(f"Authenticated as: {spotify.user_id}")
+        client = create_music_client(settings)
+        logger.info(f"Authenticated as: {client.user_id}")
+    except ImportError as e:
+        logger.error(f"Missing dependency: {e}")
+        if settings.service == MusicService.TIDAL:
+            print("\n💡 Tip: Install Tidal support with: pip install tidalapi")
+        return 1
     except Exception as e:
-        logger.error(f"Failed to authenticate with Spotify: {e}")
-        print(
-            "\n💡 Tip: Make sure your Spotify app is configured with the redirect URI: "
-            f"{settings.spotify.redirect_uri}"
-        )
+        logger.error(f"Failed to authenticate with {settings.service.value}: {e}")
+        if settings.service == MusicService.SPOTIFY:
+            print(
+                "\n💡 Tip: Make sure your Spotify app is configured with the redirect URI: "
+                f"{settings.spotify.redirect_uri}"
+            )
         return 1
 
     # Status mode
     if args.status:
-        show_status(spotify, settings)
+        show_status(client, settings)
         return 0
 
     # Initialize rules engine
     rules_engine = ScrapeRulesEngine(settings.scraping)
     logger.info(f"Active rules: {rules_engine.list_rules()}")
 
-    # Dry run mode - modify the spotify client to not actually queue
+    # Dry run mode - modify the client to not actually queue
     if args.dry_run:
         logger.info("🔍 DRY RUN MODE - no changes will be made")
-        original_add_to_queue = spotify.add_to_queue
+        original_add_to_queue = client.add_to_queue
 
         def dry_run_add_to_queue(track_uri: str) -> bool:
             logger.info(f"[DRY RUN] Would queue: {track_uri}")
             return True
 
-        spotify.add_to_queue = dry_run_add_to_queue
+        client.add_to_queue = dry_run_add_to_queue
 
     # Create and start watcher
     watcher = LikedSongsWatcher(
-        spotify_client=spotify,
+        music_client=client,
         rules_engine=rules_engine,
         settings=settings.scraping,
     )

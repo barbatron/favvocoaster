@@ -1,7 +1,10 @@
 """AWS Lambda handler for FavvoCoaster.
 
 Runs as a scheduled Lambda function (via EventBridge) to poll for new liked songs.
-Stores Spotify OAuth tokens in SSM Parameter Store.
+Stores OAuth tokens in SSM Parameter Store.
+
+Note: Currently only supports Spotify. Tidal support for Lambda would require
+additional work to handle device code flow in a serverless context.
 """
 
 import json
