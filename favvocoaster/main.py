@@ -102,6 +102,12 @@ Environment Variables:
         help="Show current status and configuration, then exit",
     )
 
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Ignore cache and rebuild known artists index from scratch",
+    )
+
     return parser.parse_args()
 
 
@@ -208,6 +214,11 @@ def main() -> int:
             return True
 
         client.add_to_queue = dry_run_add_to_queue
+
+    # Handle --no-cache flag
+    if args.no_cache:
+        logger.info("Cache disabled by --no-cache flag")
+        settings.scraping.use_cache = False
 
     # Create and start watcher
     watcher = LikedSongsWatcher(

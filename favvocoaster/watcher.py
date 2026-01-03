@@ -1,8 +1,10 @@
 """Event listener for monitoring liked songs and triggering scraping."""
 
+import json
 import logging
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Callable, Optional
 
 from .base_client import MusicServiceClient
@@ -45,6 +47,8 @@ class LikedSongsWatcher:
         self._seen_track_ids: set[str] = set()
         self._running = False
         self._last_poll_time: Optional[datetime] = None
+        self._cache_file = Path(settings.cache_file)
+        self._use_cache = settings.use_cache
 
     # Keep backward compatibility
     @property
@@ -52,12 +56,69 @@ class LikedSongsWatcher:
         """Backward compatible alias for music client."""
         return self.client
 
+    def _load_cache(self) -> bool:
+        """Load cached known artists and seen tracks from file.
+
+        Returns:
+            True if cache was loaded successfully.
+        """
+        if not self._use_cache or not self._cache_file.exists():
+            return False
+
+        try:
+            with open(self._cache_file) as f:
+                data = json.load(f)
+
+            # Validate cache is for the same user/service
+            if data.get("user_id") != self.client.user_id:
+                logger.info("Cache is for different user, ignoring")
+                return False
+            if data.get("service") != self.client.service_name:
+                logger.info("Cache is for different service, ignoring")
+                return False
+
+            self._known_artist_ids = set(data.get("known_artist_ids", []))
+            self._seen_track_ids = set(data.get("seen_track_ids", []))
+
+            logger.info(
+                f"📦 Loaded cache: {len(self._known_artist_ids)} known artists, "
+                f"{len(self._seen_track_ids)} seen tracks"
+            )
+            return True
+
+        except Exception as e:
+            logger.warning(f"Failed to load cache: {e}")
+            return False
+
+    def _save_cache(self) -> None:
+        """Save known artists and seen tracks to cache file."""
+        try:
+            data = {
+                "user_id": self.client.user_id,
+                "service": self.client.service_name,
+                "known_artist_ids": list(self._known_artist_ids),
+                "seen_track_ids": list(self._seen_track_ids),
+                "updated_at": datetime.now().isoformat(),
+            }
+            with open(self._cache_file, "w") as f:
+                json.dump(data, f, indent=2)
+            logger.debug(f"Cache saved to {self._cache_file}")
+        except Exception as e:
+            logger.warning(f"Failed to save cache: {e}")
+
     def build_known_artists_index(self) -> set[str]:
         """Build an index of known artist IDs from user's liked songs.
+
+        Tries to load from cache first to avoid slow API calls.
 
         Returns:
             Set of known artist IDs.
         """
+        # Try loading from cache first
+        if self._load_cache():
+            logger.info("Using cached known artists index (fast startup!)")
+            return self._known_artist_ids
+
         logger.info(
             f"Building known artists index from last "
             f"{self.settings.known_artists_scan_limit} liked songs..."
@@ -78,6 +139,9 @@ class LikedSongsWatcher:
             f"Found {len(known_artists)} known artists from "
             f"{len(liked_songs)} liked songs"
         )
+
+        # Save to cache for next time
+        self._save_cache()
 
         return known_artists
 
@@ -162,6 +226,9 @@ class LikedSongsWatcher:
         # Update known artists and seen tracks
         self._seen_track_ids.add(track.id)
         self._known_artist_ids.update(track.artist_ids)
+
+        # Save updated cache
+        self._save_cache()
 
         # Trigger callback if set
         if self.on_scrape_triggered and queued_tracks:

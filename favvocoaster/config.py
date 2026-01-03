@@ -79,6 +79,18 @@ class ScrapingSettings(BaseSettings):
         description="How many recent liked songs to scan for known artists",
     )
 
+    # Cache file for persisting known artists/seen tracks between restarts
+    cache_file: str = Field(
+        default=".favvocoaster_cache.json",
+        description="Path to cache file for known artists index",
+    )
+
+    # Whether to use cache (disable for fresh start)
+    use_cache: bool = Field(
+        default=True,
+        description="Use cached known artists index if available",
+    )
+
 
 class AppSettings(BaseSettings):
     """Main application settings."""
