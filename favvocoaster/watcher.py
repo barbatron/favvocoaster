@@ -110,13 +110,29 @@ class LikedSongsWatcher:
         """Build an index of known artist IDs from user's liked songs.
 
         Tries to load from cache first to avoid slow API calls.
+        Always syncs recent tracks to catch likes added while app was offline.
 
         Returns:
             Set of known artist IDs.
         """
         # Try loading from cache first
-        if self._load_cache():
+        cache_loaded = self._load_cache()
+        
+        if cache_loaded:
             logger.info("Using cached known artists index (fast startup!)")
+            # IMPORTANT: Sync recent tracks to catch any likes added while offline
+            # This prevents false "new track" detections for tracks liked between runs
+            logger.info("Syncing recent tracks to catch offline likes...")
+            recent = self.client.get_recently_liked_songs(count=50)
+            synced_count = 0
+            for track in recent:
+                if track.id not in self._seen_track_ids:
+                    self._seen_track_ids.add(track.id)
+                    self._known_artist_ids.update(track.artist_ids)
+                    synced_count += 1
+            if synced_count > 0:
+                logger.info(f"  Synced {synced_count} track(s) liked while offline")
+                self._save_cache()
             return self._known_artist_ids
 
         logger.info(
@@ -155,12 +171,17 @@ class LikedSongsWatcher:
         recent_tracks = self.client.get_recently_liked_songs(count=20)
         logger.debug(f"Got {len(recent_tracks)} recent tracks from API")
         
+        # Log track IDs for debugging
+        if recent_tracks:
+            logger.debug(f"Recent track IDs: {[t.id for t in recent_tracks[:5]]}...")
+            logger.debug(f"Seen track count: {len(self._seen_track_ids)}")
+        
         new_tracks = [t for t in recent_tracks if t.id not in self._seen_track_ids]
 
         if new_tracks:
             logger.info(f"🆕 Found {len(new_tracks)} new liked song(s):")
             for t in new_tracks:
-                logger.info(f"   • {t.name} by {', '.join(t.artist_names)}")
+                logger.info(f"   • {t.name} by {', '.join(t.artist_names)} (ID: {t.id})")
         else:
             logger.debug(f"No new tracks (all {len(recent_tracks)} already seen)")
 

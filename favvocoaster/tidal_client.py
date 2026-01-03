@@ -38,12 +38,14 @@ class TidalClient(MusicServiceClient):
         self,
         settings: TidalSettings,
         session_file: Optional[Path] = None,
+        http_logging: bool = False,
     ):
         """Initialize the Tidal client.
 
         Args:
             settings: Tidal API configuration.
             session_file: Path to store session data for persistence.
+            http_logging: Enable detailed HTTP request/response logging.
         """
         if not TIDALAPI_AVAILABLE:
             raise ImportError(
@@ -53,9 +55,14 @@ class TidalClient(MusicServiceClient):
         self.settings = settings
         self._session_file = session_file or Path(".tidal_session.json")
         self._user_id: Optional[str] = None
+        self._http_logging = http_logging
 
         # Initialize session
         self._session = tidalapi.Session()
+
+        # Enable HTTP logging if requested
+        if http_logging:
+            self._setup_http_logging()
 
         # Try to load existing session or authenticate
         if self._session_file.exists():
@@ -65,6 +72,16 @@ class TidalClient(MusicServiceClient):
                 self._authenticate()
         else:
             self._authenticate()
+
+    def _setup_http_logging(self) -> None:
+        """Set up HTTP request/response logging."""
+        try:
+            from .http_logging import setup_http_logging, patch_tidalapi_session
+            setup_http_logging()
+            patch_tidalapi_session(self._session)
+            logger.info("HTTP logging enabled - see favvocoaster_http.log")
+        except Exception as e:
+            logger.warning(f"Failed to setup HTTP logging: {e}")
 
     def _load_session(self) -> bool:
         """Load session from file.

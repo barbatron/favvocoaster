@@ -13,12 +13,14 @@ logger = logging.getLogger(__name__)
 def create_music_client(
     settings: AppSettings,
     cache_path: Optional[Path] = None,
+    http_logging: bool = False,
 ) -> MusicServiceClient:
     """Create the appropriate music client based on settings.
 
     Args:
         settings: Application settings.
         cache_path: Optional path for token cache.
+        http_logging: Enable detailed HTTP request/response logging.
 
     Returns:
         Configured MusicServiceClient instance.
@@ -51,6 +53,7 @@ def create_music_client(
             return TidalClient(
                 settings=settings.tidal,
                 session_file=cache_path or Path(settings.tidal.session_file),
+                http_logging=http_logging,
             )
         except ImportError as e:
             logger.error(f"Failed to load Tidal client: {e}")

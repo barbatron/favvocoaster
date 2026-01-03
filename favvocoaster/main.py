@@ -108,6 +108,12 @@ Environment Variables:
         help="Ignore cache and rebuild known artists index from scratch",
     )
 
+    parser.add_argument(
+        "--http-log",
+        action="store_true",
+        help="Log all HTTP requests/responses to favvocoaster_http.log with timing",
+    )
+
     return parser.parse_args()
 
 
@@ -179,7 +185,7 @@ def main() -> int:
 
     # Initialize music client
     try:
-        client = create_music_client(settings)
+        client = create_music_client(settings, http_logging=args.http_log)
         logger.info(f"Authenticated as: {client.user_id}")
     except ImportError as e:
         logger.error(f"Missing dependency: {e}")
