@@ -11,6 +11,9 @@ dependencies = [
     "pydantic-settings>=2.1.0",
 ]
 
+[project.optional-dependencies]
+lambda = ["boto3>=1.34.0"]
+
 [project.scripts]
 favvocoaster = "favvocoaster.main:main"
 
